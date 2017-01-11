@@ -88,11 +88,12 @@ def main():
 	load_data = ""
 
 	psql_types = {
-		"integer": "int(11)",
-		"int_unsigned": "int(11) UNSIGNED",
-		"smallint_unsigned": "smallint UNSIGNED",
-		"bigint_unsigned": "bigint UNSIGNED",
-		"serial": "int(11) auto_increment",
+		"smallint": "smallint",
+		"integer": "int",
+		"bigint": "bigint",
+		"smallserial": "smallint auto_increment",
+		"serial": "int auto_increment",
+		"bigserial": "bigint auto_increment",
 		"bytea": "BLOB",
 		"date": "date",
 		"text": "text",
@@ -104,7 +105,8 @@ def main():
 		"timestamp without time zone": "timestamp",
 		"time with time zone": "time",
 		"time without time zone": "time",
-		"timestamp": "timestamp"
+		"timestamp": "timestamp",
+		"ARRAY": "text"
 	}
 
 	cursor = conn.cursor()
