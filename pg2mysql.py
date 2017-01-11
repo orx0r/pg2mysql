@@ -5,67 +5,76 @@ import pprint
 import getpass
 import logging
 
-#Get the Table column names and attributes
-def get_table_col_names(con, table_str):
 
-    col_names = []
-    try:
-        cur = con.cursor()
-        cur.execute("SELECT column_name, ordinal_position, is_nullable, data_type, character_maximum_length, column_default FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name = '" + table_str + "' ORDER BY ordinal_position")
-        for desc in cur.fetchall():
-            col_names.append(desc)
-        cur.close()
-    except psycopg2.Error as e:
-        print e
+# Get the Table column names and attributes
+def get_table_col_names(con, schema_str, table_str):
+	col_names = []
+	try:
+		cur = con.cursor()
+		cur.execute(
+			"SELECT column_name, ordinal_position, is_nullable, data_type, character_maximum_length, column_default "
+			"FROM INFORMATION_SCHEMA.COLUMNS "
+			"WHERE table_name = '" + table_str + "' AND table_schema = '" + schema_str + "' "
+			"ORDER BY ordinal_position"
+		)
+		for desc in cur.fetchall():
+			col_names.append(desc)
+		cur.close()
+	except psycopg2.Error as e:
+		print e
 
-    return col_names
+	return col_names
 
-#Generate a CSV of data to be then inserted in MySQL using LOAD INFILE
+
+# Generate a CSV of data to be then inserted in MySQL using LOAD INFILE
 def exportCSV(con, table_str):
+	try:
+		cur = con.cursor()
+		io = open("/tmp/pg2mysql_tabledata_%s.csv" % table_str, "w")
+		cur.copy_to(io, table_str)
+		io.close()
+		cur.close()
+	except psycopg2.Error as e:
+		print e
 
-    try:
-        cur = con.cursor()
-	io = open("/tmp/pg2mysql_tabledata_%s.csv" % table_str, "w")
-	cur.copy_to(io, table_str)
-	io.close()
-        cur.close()
-    except psycopg2.Error as e:
-        print e
 
-#Get information about Table Constrains and Keys
+# Get information about Table Constrains and Keys
 def get_table_pkfk(con, table_str):
+	col_names = []
+	try:
+		cur = con.cursor()
+		cur.execute("SELECT conname, "
+					"pg_catalog.pg_get_constraintdef(r.oid, true) as condef, "
+					"r.contype "
+					"FROM pg_catalog.pg_constraint r "
+					"WHERE r.conrelid = '" + table_str + "'::regclass ORDER BY 1")
+		for desc in cur.fetchall():
+			col_names.append(desc)
+		cur.close()
+	except psycopg2.Error as e:
+		print e
 
-    col_names = []
-    try:
-        cur = con.cursor()
-        cur.execute("SELECT conname, "
-		    "pg_catalog.pg_get_constraintdef(r.oid, true) as condef, "
-		    "r.contype "
-		    "FROM pg_catalog.pg_constraint r "
-		    "WHERE r.conrelid = '" + table_str + "'::regclass ORDER BY 1")
-        for desc in cur.fetchall():
-            col_names.append(desc)
-        cur.close()
-    except psycopg2.Error as e:
-        print e
+	return col_names
 
-    return col_names
 
-#Helper for varchar data type writing
+# Helper for varchar data type writing
 def nomax(s):
-    if s is None:
-        return '255'
-    return str(s)
+	if s is None:
+		return '255'
+	return str(s)
+
 
 def main():
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
-	pg_db_name = "mydatabase"
-	pg_server = "pgserver"
+	pg_server = "postgres"
+	pg_db_name = "postgres"
+	pg_schema = "public"
 	pg_user = "postgres"
 	pg_passwd = getpass.getpass("Password for %s:" % pg_db_name)
-	#Define our connection string
-	conn_string = "host='%s' dbname='%s' user='%s' password='%s'" % (pg_server, pg_db_name, pg_user, pg_passwd)
+	# Define our connection string
+	conn_string = "host='%s' dbname='%s' user='%s' password='%s'" % (
+	pg_server, pg_db_name, pg_user, pg_passwd)
 
 	# get a connection, if a connect cannot be made an exception will be raised here
 	conn = psycopg2.connect(conn_string)
@@ -99,15 +108,17 @@ def main():
 	}
 
 	cursor = conn.cursor()
-	cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' and table_type = 'BASE TABLE'")
+	cursor.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s' and table_type = 'BASE TABLE'" % pg_schema)
 	for table in cursor.fetchall():
-		exportCSV(conn, table[0]);
-		load_data += "LOAD DATA LOCAL INFILE '/tmp/pg2mysql_tabledata_%s.csv' INTO TABLE %s;\n" % (table[0], table[0])
+		tbl = pg_schema + '.' + table[0]
+		exportCSV(conn, tbl)
+		load_data += "LOAD DATA LOCAL INFILE '/tmp/pg2mysql_tabledata_%s.csv' INTO TABLE %s;\n" % (tbl, tbl)
 		create_table += "CREATE TABLE " + table[0] + " (\n"
-		logging.debug('Table: %s' % table[0])
-		first = True
+		logging.debug('Table: %s' % tbl)
 		pk_created = False
-		for column in get_table_col_names(conn, table[0]):
+
+		columns_list = get_table_col_names(conn, pg_schema, table[0])
+		for idx, column in enumerate(columns_list):
 			column_name = column[0]
 			ordinal_position = column[1]
 			is_nullable = column[2] == 'YES'
@@ -118,16 +129,11 @@ def main():
 			if data_type == "character" and character_maximum_length > 255:
 				data_type = "character varying"
 
-			if not first:
-				create_table += ","
-			else:
-				create_table += " "
-
 			create_table += "   " + column_name
 			if not column_default is None and not column_default.startswith('nextval(') and data_type == "text":
 				create_table += " varchar(255)"
 			else:
-				create_table += " " + psql_types.get(data_type, "FIXME")
+				create_table += " " + psql_types.get(data_type, "FIXME(%s)" % data_type)
 			if data_type == "character varying" or data_type == "character":
 				create_table += "(%s)" % nomax(character_maximum_length)
 
@@ -145,13 +151,14 @@ def main():
 			if not is_nullable:
 				create_table += " NOT NULL"
 
-			logger.debug("%s.%s: %s - %s - %s - %s" % (table[0], column_name, character_maximum_length, column_default, data_type, is_nullable)
+			logging.debug("%s.%s: %s - %s - %s - %s" % (tbl, column_name, character_maximum_length, column_default, data_type, is_nullable))
 
+			if idx+1 != len(columns_list):
+				create_table += ","
 			create_table += "\n"
-			first = False
 		create_table += ") ENGINE=innodb;\n\n"
 
-		for column in get_table_pkfk(conn, table[0]):
+		for column in get_table_pkfk(conn, tbl):
 			constraint_name = column[0]
 			constraint_def = column[1]
 			constraint_type = column[2]
@@ -176,6 +183,7 @@ def main():
 	print(load_data)
 	print(uk_constraints)
 	print(fk_constraints)
+
 
 if __name__ == "__main__":
 	main()
