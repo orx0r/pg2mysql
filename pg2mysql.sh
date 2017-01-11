@@ -6,7 +6,7 @@
 MYSQL_DBNAME=mydatabase
 
 #Call the Python conversion script and store it in temp folder
-./sre2_pg2mysql.py > /tmp/ddl_export.mysql
+./pg2mysql.py > /tmp/ddl_export.mysql
 
 mysql -e "drop database if exists ${MYSQL_DBNAME}"
 mysql -e "create database ${MYSQL_DBNAME} CHARACTER SET utf8 COLLATE utf8_general_ci;"

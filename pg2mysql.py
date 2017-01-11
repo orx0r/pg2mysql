@@ -1,8 +1,7 @@
 #!/usr/bin/python
 import psycopg2
 import sys
-import pprint
-import getpass
+import argparse
 import logging
 
 
@@ -67,15 +66,24 @@ def nomax(s):
 def main():
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
-	pg_server = "postgres"
-	pg_db_name = "postgres"
-	pg_schema = "public"
-	pg_user = "postgres"
-	pg_passwd = getpass.getpass("Password for %s:" % pg_db_name)
-	# Define our connection string
-	conn_string = "host='%s' dbname='%s' user='%s' password='%s'" % (
-	pg_server, pg_db_name, pg_user, pg_passwd)
+	parser = argparse.ArgumentParser(add_help=False)
+	parser.add_argument("-?", "--help", action='store_true')
+	parser.add_argument("-h", "--host", default='postgres', help="Specifies the host name of the machine on which the server is running. If the value begins with a slash, it is used as the directory for the Unix-domain socket.")
+	parser.add_argument("-p", "--port", default='5432', help="Specifies the TCP port or the local Unix-domain socket file extension on which the server is listening for connections. Defaults to 5432.")
+	parser.add_argument("-d", "--dbname", default='postgres', help="Specifies the name of the database to connect to.")
+	parser.add_argument("-s", "--schema", default='public', help="Specifies the name of the schema to dump.")
+	parser.add_argument("-U", "--user", default='postgres', help="Connect to the database as the user username instead of the default.")
+	parser.add_argument("-W", "--password", default='', help="Connect to the database with specified password.")
+	args = parser.parse_args()
 
+	if args.help:
+		parser.print_help()
+		sys.exit(0)
+
+	pg_schema = args.schema
+
+	# Define our connection string
+	conn_string = "host='%s' port='%s' dbname='%s' user='%s' password='%s'" % (args.host, args.port, args.dbname, args.user, args.password)
 	# get a connection, if a connect cannot be made an exception will be raised here
 	conn = psycopg2.connect(conn_string)
 	conn.set_session(readonly=True)
