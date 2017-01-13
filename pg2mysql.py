@@ -154,10 +154,10 @@ def main():
 				elif column_default.startswith("('now'::text)::date"):
 					pass
 				else:
-					idx = column_default.find("::")
-					if idx == -1:
-						idx = len(column_default)
-					create_table += " DEFAULT " + column_default[:idx]
+					def_idx = column_default.find("::")
+					if def_idx == -1:
+						def_idx = len(column_default)
+					create_table += " DEFAULT " + column_default[:def_idx]
 			if not is_nullable:
 				create_table += " NOT NULL"
 
@@ -170,7 +170,8 @@ def main():
 
 		for column in get_table_pkfk(conn, tbl):
 			constraint_name = column[0]
-			constraint_def = column[1]
+			# Delete unnecessary quotes and postgres schema name
+			constraint_def = column[1].replace("\"", "").replace(pg_schema + ".", "")
 			constraint_type = column[2]
 
 			constraint = ""
